@@ -11,6 +11,7 @@ class LoadFboFeed extends Command
         {--file= : Load from a local file (legacy FBO text format)}
         {--date= : Load a specific date (YYYYMMDD)}
         {--date-range= : Load a date range (YYYYMMDD-YYYYMMDD)}
+        {--yesterday : Load SAM.gov for the previous calendar day (app timezone); used by the nightly scheduler}
         {--sync : Run synchronously instead of dispatching to queue}';
 
     protected $description = 'Load federal contract opportunities from the SAM.gov API';
@@ -20,6 +21,7 @@ class LoadFboFeed extends Command
         $file = $this->option('file');
         $date = $this->option('date');
         $dateRange = $this->option('date-range');
+        $yesterday = $this->option('yesterday');
         $sync = $this->option('sync');
 
         $job = null;
@@ -38,6 +40,10 @@ class LoadFboFeed extends Command
             }
             $this->info("Loading from SAM.gov API: {$parts[0]} to {$parts[1]}");
             $job = new LoadFboFeedJob(startDate: $parts[0], endDate: $parts[1]);
+        } elseif ($yesterday) {
+            $date = now()->subDay()->format('Ymd');
+            $this->info("Loading from SAM.gov API for yesterday ({$date}, " . config('app.timezone') . ' calendar day)');
+            $job = new LoadFboFeedJob(singleDate: $date);
         } else {
             $lookBack = config('fbo.look_back_days', 60);
             $this->info("Loading unloaded feeds from SAM.gov API (lookback: {$lookBack} days)");

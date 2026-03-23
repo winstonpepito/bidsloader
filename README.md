@@ -114,19 +114,31 @@ php artisan fbo:load
 
 ### Scheduled Execution
 
-The feed loader runs daily at 2:00 AM via Laravel's scheduler. Add this to your crontab:
+The scheduler runs **`php artisan fbo:load --yesterday`** every day at **2:00 AM** in **`APP_TIMEZONE`**. That loads SAM.gov for the **previous calendar day** (so a 2:00 AM run on Tuesday loads Monday’s postings).
+
+Add this to the server crontab (use your real app path; on EC2 often `/var/www/bidsloader`):
 
 ```
-* * * * * cd /path/to/FBOFeedApp && php artisan schedule:run >> /dev/null 2>&1
+* * * * * cd /var/www/bidsloader && php artisan schedule:run >> /dev/null 2>&1
+```
+
+The scheduled task **dispatches to the queue** (not `--sync`), so a **queue worker** must be running or the job will sit in `jobs` until a worker starts.
+
+Manual one-off for “yesterday” in app timezone:
+
+```bash
+php artisan fbo:load --yesterday
 ```
 
 ### Queue Worker
 
-For background job processing:
+For background job processing (required for the nightly schedule above):
 
 ```bash
-php artisan queue:work --queue=default --tries=3
+php artisan queue:work database --sleep=3 --tries=3
 ```
+
+On production, run this under **systemd** or **Supervisor** (see deployment notes).
 
 ### Production: Apache / EC2 — storage permissions (fixes HTTP 500 / `tempnam()`)
 
