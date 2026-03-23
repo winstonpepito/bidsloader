@@ -8,15 +8,25 @@ use App\Models\State;
 use App\Models\SubscriptionType;
 use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        User::factory()->create([
-            'name' => 'Admin',
-            'email' => 'admin@example.com',
-        ]);
+        // Do not use User::factory() here: production often runs `composer install --no-dev`,
+        // so fakerphp/faker is missing and fake() is undefined inside Database\Factories.
+        // Password matches UserFactory default: "password".
+        User::firstOrCreate(
+            ['email' => 'admin@example.com'],
+            [
+                'name' => 'Admin',
+                'password' => Hash::make('password'),
+                'email_verified_at' => now(),
+                'remember_token' => Str::random(10),
+            ]
+        );
 
         Source::firstOrCreate(['name' => Source::FBO]);
 

@@ -43,8 +43,9 @@ touch database/database.sqlite
 # Run migrations
 php artisan migrate
 
-# Seed initial data (states, categories, subscription types)
+# Seed initial data (admin user, states, categories, subscription types)
 php artisan db:seed
+# Seeded login: admin@example.com / password (change this in production)
 
 # Build frontend assets
 npm run build
@@ -90,7 +91,7 @@ php artisan serve
 npm run dev
 ```
 
-Visit `http://localhost:8000` and log in with the seeded admin account (`admin@example.com`).
+Visit `http://localhost:8000` and log in with **`admin@example.com`** / **`password`** (Laravel `UserFactory` default). Change the password after first login in production.
 
 ### Command Line
 
@@ -126,6 +127,82 @@ For background job processing:
 ```bash
 php artisan queue:work --queue=default --tries=3
 ```
+
+### Production: Apache / EC2 — storage permissions (fixes HTTP 500 / `tempnam()`)
+
+If the site returns **500** with `ErrorException` in `Illuminate\Filesystem\Filesystem.php` around **`tempnam()`** (often when compiling Blade views), the web server user usually **cannot write** under `storage/` or `bootstrap/cache/`.
+
+On the server, from the app root (e.g. `/var/www/bidsloader`):
+
+```bash
+cd /var/www/bidsloader
+
+# Ensure framework directories exist (git may not ship compiled views)
+sudo mkdir -p storage/framework/{views,cache,sessions}
+sudo mkdir -p storage/logs
+sudo mkdir -p bootstrap/cache
+
+# Web server user: Amazon Linux httpd is typically 'apache'
+# (If you use PHP-FPM, match the pool user, e.g. grep ^User /etc/httpd/conf/httpd.conf or the FPM pool.)
+sudo chown -R apache:apache storage bootstrap/cache
+sudo chmod -R ug+rwx storage bootstrap/cache
+
+# SQLite: the DB file and its directory must be writable (sessions, cache, jobs)
+sudo touch database/database.sqlite 2>/dev/null || true
+sudo chown apache:apache database/database.sqlite
+sudo chmod 664 database/database.sqlite
+sudo chown apache:apache database
+sudo chmod 775 database
+
+# If SELinux is enforcing (getenforce → Enforcing), allow httpd to write:
+# sudo chcon -R -t httpd_sys_rw_content_t storage bootstrap/cache database
+
+sudo systemctl reload httpd
+```
+
+Then clear cached config/views if you had partial failures:
+
+```bash
+php artisan view:clear
+php artisan config:clear
+php artisan cache:clear
+```
+
+Set `APP_URL=https://your-loader-hostname` in `.env` and run `php artisan config:cache` when finished.
+
+### Production: admin login (`admin@example.com`)
+
+If login fails on the server, the admin user usually **was never created** (only `migrate` was run, not `db:seed`), or the password is not what you expect.
+
+1. **Create / refresh seeded data** (from app root). The web user must be able to write `storage/logs` (or run Artisan as that user):
+
+   ```bash
+   cd /var/www/bidsloader
+   sudo -u apache php artisan migrate --force
+   sudo -u apache php artisan db:seed --force
+   ```
+
+   If you run `php artisan` as `ec2-user` instead, ensure logs are writable (e.g. `sudo chown -R apache:apache storage bootstrap/cache` after deploy, or add group write on `storage/logs`).
+
+2. **Default seeded credentials** (`DatabaseSeeder`; password matches `UserFactory` for local dev):
+
+   - **Email:** `admin@example.com`
+   - **Password:** `password` (all lowercase)
+
+3. **Verify the user exists** (SQLite example):
+
+   ```bash
+   sqlite3 database/database.sqlite "SELECT id, email, email_verified_at FROM users;"
+   ```
+
+   `email_verified_at` should be non-null (dashboard routes use the `verified` middleware).
+
+4. **If the user exists but the password was changed**, reset it with Tinker:
+
+   ```bash
+   php artisan tinker
+   >>> \App\Models\User::where('email', 'admin@example.com')->update(['password' => bcrypt('your-new-password')]);
+   ```
 
 ## Architecture
 
