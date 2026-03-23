@@ -175,12 +175,35 @@ sudo systemctl reload httpd
 Then clear cached config/views if you had partial failures:
 
 ```bash
+php artisan route:clear
 php artisan view:clear
 php artisan config:clear
 php artisan cache:clear
 ```
 
 Set `APP_URL=https://your-loader-hostname` in `.env` and run `php artisan config:cache` when finished.
+
+### Production: home page still shows the Laravel “Welcome” page
+
+The app is configured so **`/` shows the login form** for guests (see `routes/web.php`). If you still see the generic Welcome page after `git pull`:
+
+1. **Confirm the server has current code** — the route change is in recent commits; run `git pull` on the server.
+2. **Clear route cache** — a cached route file will keep the *old* `/` → `Welcome` definition until you run:
+   ```bash
+   cd /var/www/bidsloader
+   php artisan route:clear
+   ```
+   Or clear everything: `php artisan optimize:clear`
+3. **Rebuild frontend assets** if you deploy with `npm run build` on the server (so `public/build` matches the app).
+4. **Reload PHP / Apache** so OPcache picks up changed PHP files: `sudo systemctl reload httpd` (and `php-fpm` if used).
+
+Check what Laravel thinks `/` is:
+
+```bash
+php artisan route:list --path=/
+```
+
+You should see a closure/`/` route serving the app (not an old `Welcome` Inertia page from cached routes).
 
 ### Production: admin login (`admin@example.com`)
 
