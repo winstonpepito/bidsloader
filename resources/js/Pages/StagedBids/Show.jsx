@@ -54,6 +54,11 @@ export default function StagedBidShow({ stagedBid }) {
                             <p className="text-sm font-medium text-red-800">{flash.error}</p>
                         </div>
                     )}
+                    {flash?.warning && (
+                        <div className="mb-4 rounded-md bg-amber-50 p-4">
+                            <p className="text-sm font-medium text-amber-900">{flash.warning}</p>
+                        </div>
+                    )}
 
                     {/* Action bar */}
                     {isPending && (

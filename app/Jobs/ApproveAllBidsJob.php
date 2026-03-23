@@ -52,6 +52,7 @@ class ApproveAllBidsJob implements ShouldQueue
             foreach ($bids as $stagedBid) {
                 try {
                     if ($writer->isDuplicateInOracle($stagedBid)) {
+                        $stagedBid->update(['review_status' => 'rejected']);
                         $skipped++;
                         $processed++;
                         continue;

@@ -91,7 +91,7 @@ function ApproveProgressBar({ initial }) {
             </div>
             <div className="flex gap-4 text-xs">
                 <span className="text-green-700">Approved: {approved}</span>
-                <span className="text-amber-700">Skipped (dup): {skipped}</span>
+                <span className="text-amber-700">Rejected (duplicate): {skipped}</span>
                 {errors > 0 && <span className="text-red-700">Errors: {errors}</span>}
                 {isRunning && (
                     <span className="ml-auto text-blue-600 flex items-center gap-1">
@@ -223,6 +223,11 @@ export default function StagedBidsIndex({ stagedBids, categories, counts, filter
                     {flash?.error && (
                         <div className="mb-4 rounded-md bg-red-50 p-4">
                             <p className="text-sm font-medium text-red-800">{flash.error}</p>
+                        </div>
+                    )}
+                    {flash?.warning && (
+                        <div className="mb-4 rounded-md bg-amber-50 p-4">
+                            <p className="text-sm font-medium text-amber-900">{flash.warning}</p>
                         </div>
                     )}
 

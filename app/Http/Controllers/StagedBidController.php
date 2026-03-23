@@ -90,7 +90,12 @@ class StagedBidController extends Controller
         }
 
         if ($this->liveBidWriter->isDuplicateInOracle($stagedBid)) {
-            return back()->with('error', 'A bid with this solicitation number already exists in the live database.');
+            $stagedBid->update(['review_status' => 'rejected']);
+
+            return back()->with(
+                'warning',
+                'Bid rejected: a record with this solicitation number already exists in the live database.'
+            );
         }
 
         try {
