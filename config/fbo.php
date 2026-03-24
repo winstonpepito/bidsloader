@@ -4,6 +4,8 @@ return [
     'sam_api_url' => env('SAM_API_URL', 'https://api.sam.gov/opportunities/v2/search'),
     'sam_api_key' => env('SAM_API_KEY', ''),
     'sam_api_page_size' => (int) env('SAM_API_PAGE_SIZE', 1000),
+    'sam_api_timeout' => (int) env('SAM_API_TIMEOUT', 120),
+    'sam_api_connect_timeout' => (int) env('SAM_API_CONNECT_TIMEOUT', 20),
     'sam_fetch_descriptions' => (bool) env('SAM_FETCH_DESCRIPTIONS', false),
 
     'look_back_days' => (int) env('FBO_LOOK_BACK_DAYS', 60),

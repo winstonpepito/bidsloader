@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\FBOFeedLoaderException;
 use App\Jobs\ApproveAllBidsJob;
 use App\Jobs\LoadFboFeedJob;
 use App\Models\Category;
 use App\Models\LoadedFboFeed;
 use App\Models\StagedBid;
+use App\Services\FBOFeed\SamApiClient;
 use App\Services\LiveBidWriter;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -106,7 +109,8 @@ class StagedBidController extends Controller
                 'staged_bid_id' => $stagedBid->id,
                 'error' => $e->getMessage(),
             ]);
-            return back()->with('error', 'Failed to write bid to live database: ' . $e->getMessage());
+
+            return back()->with('error', 'Failed to write bid to live database: '.$e->getMessage());
         }
 
         return back()->with('success', 'Bid approved and pushed to live Oracle database.');
@@ -228,5 +232,45 @@ class StagedBidController extends Controller
     public function approveProgress()
     {
         return response()->json(Cache::get('approve_all_progress'));
+    }
+
+    /**
+     * Download raw SAM.gov search API JSON for a calendar day (no DB / staging).
+     */
+    public function downloadSamGovJson(Request $request)
+    {
+        $validated = $request->validate([
+            'date' => 'required|date_format:Y-m-d',
+        ]);
+
+        try {
+            $client = app(SamApiClient::class);
+            $payload = $client->fetchRawExportForDate(
+                Carbon::parse($validated['date'])->startOfDay()
+            );
+        } catch (FBOFeedLoaderException $e) {
+            return redirect()
+                ->route('staged-bids.index')
+                ->with('error', $e->getMessage());
+        } catch (\Throwable $e) {
+            Log::error('SAM.gov JSON export failed', ['exception' => $e]);
+
+            return redirect()
+                ->route('staged-bids.index')
+                ->with('error', 'Failed to download SAM.gov JSON: '.$e->getMessage());
+        }
+
+        $filename = 'sam-gov-opportunities-'.$validated['date'].'.json';
+
+        return response()->streamDownload(
+            function () use ($payload) {
+                echo json_encode(
+                    $payload,
+                    JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE
+                );
+            },
+            $filename,
+            ['Content-Type' => 'application/json; charset=UTF-8']
+        );
     }
 }

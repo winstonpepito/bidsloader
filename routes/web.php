@@ -39,6 +39,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/staged-bids/delete-all-pending', [StagedBidController::class, 'deleteAllPending'])->name('staged-bids.delete-all-pending');
     Route::post('/staged-bids/approve-all', [StagedBidController::class, 'approveAll'])->name('staged-bids.approve-all');
     Route::get('/staged-bids/approve-progress', [StagedBidController::class, 'approveProgress'])->name('staged-bids.approve-progress');
+    Route::get('/staged-bids/sam-json-export', [StagedBidController::class, 'downloadSamGovJson'])->name('staged-bids.sam-json');
     Route::get('/staged-bids/{stagedBid}', [StagedBidController::class, 'show'])->name('staged-bids.show');
     Route::post('/staged-bids/{stagedBid}/approve', [StagedBidController::class, 'approve'])->name('staged-bids.approve');
     Route::post('/staged-bids/{stagedBid}/reject', [StagedBidController::class, 'reject'])->name('staged-bids.reject');

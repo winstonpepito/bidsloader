@@ -60,6 +60,8 @@ Edit `.env` to configure:
 SAM_API_URL=https://api.sam.gov/opportunities/v2/search
 SAM_API_KEY=your-api-key-here
 SAM_API_PAGE_SIZE=1000
+SAM_API_TIMEOUT=120
+SAM_API_CONNECT_TIMEOUT=20
 SAM_FETCH_DESCRIPTIONS=false
 
 # Feed Loader Settings

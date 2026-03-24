@@ -241,7 +241,9 @@ export default function StagedBidsIndex({ stagedBids, categories, counts, filter
                         <form onSubmit={handleLoadFeed} className="flex flex-wrap items-end gap-4">
                             <div>
                                 <h3 className="text-sm font-semibold text-indigo-900">Load Bids from SAM.gov</h3>
-                                <p className="mt-0.5 text-xs text-indigo-700">Fetch opportunities for a specific date into staging for review.</p>
+                                <p className="mt-0.5 text-xs text-indigo-700">
+                                    Load opportunities into staging for review, or download raw SAM.gov search API JSON for the selected date (no database writes).
+                                </p>
                             </div>
                             <div className="flex-1" />
                             <div>
@@ -270,6 +272,23 @@ export default function StagedBidsIndex({ stagedBids, categories, counts, filter
                                     'Load Bids'
                                 )}
                             </button>
+                            <a
+                                href={
+                                    loadDate
+                                        ? `${route('staged-bids.sam-json')}?date=${encodeURIComponent(loadDate)}`
+                                        : '#'
+                                }
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => {
+                                    if (!loadDate) e.preventDefault();
+                                }}
+                                className={`inline-flex items-center rounded-md border border-indigo-600 bg-white px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm hover:bg-indigo-50 ${
+                                    !loadDate ? 'pointer-events-none opacity-50' : ''
+                                }`}
+                            >
+                                Download JSON
+                            </a>
                         </form>
                     </div>
 
