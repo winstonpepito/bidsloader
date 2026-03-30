@@ -14,6 +14,8 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 
 class StagedBidController extends Controller
@@ -272,5 +274,152 @@ class StagedBidController extends Controller
             $filename,
             ['Content-Type' => 'application/json; charset=UTF-8']
         );
+    }
+
+    /**
+     * Start a browser-orchestrated SAM.gov fetch session (SPA will call fetch repeatedly).
+     */
+    public function samBrowserStart(Request $request)
+    {
+        $validated = $request->validate([
+            'date' => 'required|date_format:Y-m-d',
+        ]);
+
+        $date = $validated['date'];
+
+        if (LoadedFboFeed::isFboDateLoaded($date)) {
+            return response()->json([
+                'message' => "Feed for {$date} is already loaded or loading.",
+            ], 422);
+        }
+
+        $sessionId = (string) Str::uuid();
+
+        $payload = [
+            'user_id' => $request->user()->id,
+            'date' => $date,
+            'opportunities' => [],
+            'next_offset' => 0,
+            'total_records' => null,
+            'complete' => false,
+        ];
+
+        Storage::disk('local')->put(
+            'sam-browser/'.$sessionId.'.json',
+            json_encode($payload, JSON_INVALID_UTF8_SUBSTITUTE)
+        );
+
+        return response()->json([
+            'session_id' => $sessionId,
+            'inter_page_delay_ms' => (int) config('fbo.sam_browser_inter_page_delay_ms', 400),
+            'page_size' => (int) config('fbo.sam_api_page_size', 1000),
+        ]);
+    }
+
+    /**
+     * Fetch the next page from SAM.gov (server-side proxy with browser-like headers) and append to the session file.
+     */
+    public function samBrowserFetch(Request $request)
+    {
+        $validated = $request->validate([
+            'session_id' => 'required|uuid',
+        ]);
+
+        $sessionId = $validated['session_id'];
+        $relative = 'sam-browser/'.$sessionId.'.json';
+
+        if (! Storage::disk('local')->exists($relative)) {
+            return response()->json(['message' => 'Session expired or invalid.'], 404);
+        }
+
+        $data = json_decode(Storage::disk('local')->get($relative), true) ?? [];
+
+        if (($data['user_id'] ?? null) !== $request->user()->id) {
+            abort(403);
+        }
+
+        if (! empty($data['complete'])) {
+            return response()->json([
+                'done' => true,
+                'totalRecords' => (int) ($data['total_records'] ?? 0),
+                'loadedCount' => count($data['opportunities'] ?? []),
+            ]);
+        }
+
+        $serverDelay = (int) config('fbo.sam_browser_server_delay_ms', 350);
+        if ($serverDelay > 0 && ($data['next_offset'] ?? 0) > 0) {
+            usleep($serverDelay * 1000);
+        }
+
+        $date = Carbon::parse($data['date'])->startOfDay();
+        $offset = (int) ($data['next_offset'] ?? 0);
+
+        try {
+            $client = app(SamApiClient::class);
+            $page = $client->fetchSearchPageForDate($date, $offset);
+        } catch (FBOFeedLoaderException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $opps = $page['opportunitiesData'] ?? [];
+        $totalRecords = (int) ($page['totalRecords'] ?? 0);
+        $data['opportunities'] = array_merge($data['opportunities'] ?? [], $opps);
+        $data['total_records'] = $totalRecords;
+        $pageSize = (int) config('fbo.sam_api_page_size', 1000);
+        $data['next_offset'] = $offset + $pageSize;
+        $data['complete'] = $totalRecords === 0 || $data['next_offset'] >= $totalRecords;
+
+        Storage::disk('local')->put($relative, json_encode($data, JSON_INVALID_UTF8_SUBSTITUTE));
+
+        return response()->json([
+            'done' => $data['complete'],
+            'totalRecords' => $totalRecords,
+            'loadedCount' => count($data['opportunities']),
+            'pageFetched' => count($opps),
+            'nextOffset' => $data['next_offset'],
+            'inter_page_delay_ms' => (int) config('fbo.sam_browser_inter_page_delay_ms', 400),
+        ]);
+    }
+
+    /**
+     * Queue staging load from the completed session file (same pipeline as API load).
+     */
+    public function samBrowserFinish(Request $request)
+    {
+        $validated = $request->validate([
+            'session_id' => 'required|uuid',
+        ]);
+
+        $sessionId = $validated['session_id'];
+        $relative = 'sam-browser/'.$sessionId.'.json';
+
+        if (! Storage::disk('local')->exists($relative)) {
+            return back()->with('error', 'Session expired or invalid.');
+        }
+
+        $data = json_decode(Storage::disk('local')->get($relative), true) ?? [];
+
+        if (($data['user_id'] ?? null) !== $request->user()->id) {
+            abort(403);
+        }
+
+        if (empty($data['complete'])) {
+            return back()->with('error', 'SAM.gov fetch is not complete. Fetch all pages first.');
+        }
+
+        $dateStr = $data['date'] ?? '';
+
+        if (LoadedFboFeed::isFboDateLoaded($dateStr)) {
+            Storage::disk('local')->delete($relative);
+
+            return back()->with('error', "Feed for {$dateStr} is already loaded or loading.");
+        }
+
+        dispatch(new LoadFboFeedJob(
+            singleDate: $dateStr,
+            samBrowserSessionId: $sessionId,
+        ));
+
+        return back()->with('success', "Staging load queued for {$dateStr} (browser-paced SAM.gov fetch). New bids will appear shortly.");
     }
 }

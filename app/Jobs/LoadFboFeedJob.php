@@ -18,6 +18,7 @@ class LoadFboFeedJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public int $timeout = 600;
 
     public function __construct(
@@ -25,12 +26,12 @@ class LoadFboFeedJob implements ShouldQueue
         private readonly ?string $startDate = null,
         private readonly ?string $endDate = null,
         private readonly ?string $singleDate = null,
-    ) {
-    }
+        private readonly ?string $samBrowserSessionId = null,
+    ) {}
 
     public function handle(): void
     {
-        $loader = new FBOFeedLoader();
+        $loader = new FBOFeedLoader;
         $results = [];
 
         try {
@@ -39,9 +40,14 @@ class LoadFboFeedJob implements ShouldQueue
                 $result = $loader->loadFromFile($this->filePath);
                 $results[$result->date] = $result;
             } elseif ($this->singleDate) {
-                Log::info("Loading feed from SAM.gov API for date: {$this->singleDate}");
                 $date = Carbon::parse($this->singleDate);
-                $result = $loader->loadFromApi($date);
+                if ($this->samBrowserSessionId) {
+                    Log::info("Loading feed from SAM.gov browser session {$this->samBrowserSessionId} for {$this->singleDate}");
+                    $result = $loader->loadFromSamBrowserSession($this->samBrowserSessionId, $date);
+                } else {
+                    Log::info("Loading feed from SAM.gov API for date: {$this->singleDate}");
+                    $result = $loader->loadFromApi($date);
+                }
                 $results[$result->date] = $result;
             } elseif ($this->startDate && $this->endDate) {
                 Log::info("Loading feeds from SAM.gov API: {$this->startDate} to {$this->endDate}");

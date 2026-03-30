@@ -33,6 +33,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/staged-bids', [StagedBidController::class, 'index'])->name('staged-bids.index');
     Route::post('/staged-bids/load', [StagedBidController::class, 'triggerLoad'])->name('staged-bids.load');
+    Route::post('/staged-bids/sam-browser-start', [StagedBidController::class, 'samBrowserStart'])->name('staged-bids.sam-browser-start');
+    Route::post('/staged-bids/sam-browser-fetch', [StagedBidController::class, 'samBrowserFetch'])->name('staged-bids.sam-browser-fetch');
+    Route::post('/staged-bids/sam-browser-finish', [StagedBidController::class, 'samBrowserFinish'])->name('staged-bids.sam-browser-finish');
     Route::post('/staged-bids/bulk-approve', [StagedBidController::class, 'bulkApprove'])->name('staged-bids.bulk-approve');
     Route::post('/staged-bids/bulk-reject', [StagedBidController::class, 'bulkReject'])->name('staged-bids.bulk-reject');
     Route::post('/staged-bids/bulk-delete', [StagedBidController::class, 'bulkDelete'])->name('staged-bids.bulk-delete');

@@ -9,18 +9,22 @@ use App\Models\FeedLoadLog;
 use App\Models\LoadedFboFeed;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class FBOFeedLoader
 {
     private FBOFeedParser $parser;
+
     private ProcessorDispatcher $dispatcher;
+
     private int $errorCount = 0;
+
     private int $loadedCount = 0;
 
     public function __construct()
     {
-        $this->parser = new FBOFeedParser();
-        $this->dispatcher = new ProcessorDispatcher();
+        $this->parser = new FBOFeedParser;
+        $this->dispatcher = new ProcessorDispatcher;
     }
 
     /**
@@ -44,7 +48,7 @@ class FBOFeedLoader
      */
     public function loadFromApi(Carbon $date): LoadResult
     {
-        $client = new SamApiClient();
+        $client = new SamApiClient;
         $fetchDescriptions = (bool) config('fbo.sam_fetch_descriptions', false);
         $mapper = new SamApiMapper($client, $fetchDescriptions);
 
@@ -53,15 +57,60 @@ class FBOFeedLoader
         $opportunities = $client->searchByDate($date);
         $entries = $mapper->mapOpportunities($opportunities, $date);
 
-        Log::info("Mapped " . count($entries) . " entries from " . count($opportunities) . " API results");
+        Log::info('Mapped '.count($entries).' entries from '.count($opportunities).' API results');
 
         $this->dispatcher->setStaging(true);
 
         try {
-            return $this->processEntries($entries, $date, 'SAM API ' . $date->format('Y-m-d'));
+            return $this->processEntries($entries, $date, 'SAM API '.$date->format('Y-m-d'));
         } finally {
             $this->dispatcher->setStaging(false);
         }
+    }
+
+    /**
+     * Load from pre-fetched SAM.gov opportunity objects (e.g. browser-orchestrated paged fetch).
+     *
+     * @param  array<int, array<string, mixed>>  $opportunities
+     */
+    public function loadFromApiWithOpportunities(Carbon $date, array $opportunities): LoadResult
+    {
+        $client = new SamApiClient;
+        $fetchDescriptions = (bool) config('fbo.sam_fetch_descriptions', false);
+        $mapper = new SamApiMapper($client, $fetchDescriptions);
+
+        Log::info('Processing '.count($opportunities).' pre-fetched SAM.gov opportunities for '.$date->format('Y-m-d'));
+
+        $entries = $mapper->mapOpportunities($opportunities, $date);
+
+        Log::info('Mapped '.count($entries).' entries from '.count($opportunities).' API results');
+
+        $this->dispatcher->setStaging(true);
+
+        try {
+            return $this->processEntries($entries, $date, 'SAM API '.$date->format('Y-m-d').' (browser session)');
+        } finally {
+            $this->dispatcher->setStaging(false);
+        }
+    }
+
+    /**
+     * Load from a completed browser-orchestrated session file (stored under storage/app/sam-browser/).
+     */
+    public function loadFromSamBrowserSession(string $sessionId, Carbon $date): LoadResult
+    {
+        $relative = 'sam-browser/'.$sessionId.'.json';
+
+        if (! Storage::exists($relative)) {
+            throw new FBOFeedLoaderException('Browser session data not found or already processed.');
+        }
+
+        $raw = json_decode(Storage::get($relative), true) ?? [];
+        $opportunities = $raw['opportunities'] ?? [];
+
+        Storage::delete($relative);
+
+        return $this->loadFromApiWithOpportunities($date, $opportunities);
     }
 
     /**
@@ -81,7 +130,7 @@ class FBOFeedLoader
                 Log::error("Failed to load SAM feed for {$dateStr}: {$e->getMessage()}");
                 $results[$dateStr] = new LoadResult(
                     date: $dateStr,
-                    filename: 'SAM API ' . $dateStr,
+                    filename: 'SAM API '.$dateStr,
                     success: false,
                     entriesLoaded: 0,
                     errorsCount: 1,
@@ -103,7 +152,7 @@ class FBOFeedLoader
 
         while ($current->lte($endDate)) {
             $dateStr = $current->format('Y-m-d');
-            if (!LoadedFboFeed::isFboDateLoaded($dateStr)) {
+            if (! LoadedFboFeed::isFboDateLoaded($dateStr)) {
                 try {
                     $results[$dateStr] = $this->loadFromApi($current->copy());
                 } catch (\Exception $e) {
@@ -143,8 +192,8 @@ class FBOFeedLoader
     /**
      * Process an array of FBOFeedEntry objects and persist them via the processor pipeline.
      *
-     * @param FBOFeedEntry[] $entries
-     * @param FBOFeedParserException[] $parseErrors
+     * @param  FBOFeedEntry[]  $entries
+     * @param  FBOFeedParserException[]  $parseErrors
      */
     public function processEntries(
         array $entries,
@@ -225,7 +274,7 @@ class FBOFeedLoader
             'entry_type' => $error->getEntryType(),
             'error_message' => mb_substr($error->getMessage(), 0, 1000),
             'fbo_file_date' => $fboDate,
-            'compressed_entry' => !empty($error->getEntryLines()) ? implode("\n", $error->getEntryLines()) : null,
+            'compressed_entry' => ! empty($error->getEntryLines()) ? implode("\n", $error->getEntryLines()) : null,
             'compressed_stack' => $error->getTraceAsString(),
         ]);
     }

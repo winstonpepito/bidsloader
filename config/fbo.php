@@ -6,6 +6,13 @@ return [
     'sam_api_page_size' => (int) env('SAM_API_PAGE_SIZE', 1000),
     'sam_api_timeout' => (int) env('SAM_API_TIMEOUT', 120),
     'sam_api_connect_timeout' => (int) env('SAM_API_CONNECT_TIMEOUT', 20),
+
+    /** Delay between SAM.gov pages when fetching server-side (ms). 0 = no delay. */
+    'sam_inter_page_delay_ms' => (int) env('SAM_INTER_PAGE_DELAY_MS', 0),
+
+    /** Browser-orchestrated load: pause between SPA requests + server pause before each SAM call (ms). */
+    'sam_browser_inter_page_delay_ms' => (int) env('SAM_BROWSER_INTER_PAGE_DELAY_MS', 400),
+    'sam_browser_server_delay_ms' => (int) env('SAM_BROWSER_SERVER_DELAY_MS', 350),
     'sam_fetch_descriptions' => (bool) env('SAM_FETCH_DESCRIPTIONS', false),
 
     'look_back_days' => (int) env('FBO_LOOK_BACK_DAYS', 60),

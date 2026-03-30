@@ -1,5 +1,6 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import Pagination from '@/Components/Pagination';
+import axios from 'axios';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { useState, useEffect, useCallback } from 'react';
 
@@ -113,6 +114,9 @@ export default function StagedBidsIndex({ stagedBids, categories, counts, filter
     const [processing, setProcessing] = useState(false);
     const [loadDate, setLoadDate] = useState(todayStr());
     const [loadingFeed, setLoadingFeed] = useState(false);
+    const [browserSamLoading, setBrowserSamLoading] = useState(false);
+    const [browserSamProgress, setBrowserSamProgress] = useState('');
+    const [browserSamError, setBrowserSamError] = useState(null);
     const { flash } = usePage().props;
 
     const isApproving = approveProgress?.status === 'running';
@@ -204,6 +208,50 @@ export default function StagedBidsIndex({ stagedBids, categories, counts, filter
         });
     }
 
+    async function handleBrowserPacedLoad() {
+        if (!loadDate || browserSamLoading) return;
+        setBrowserSamError(null);
+        setBrowserSamLoading(true);
+        setBrowserSamProgress('Starting session…');
+        try {
+            const { data: start } = await axios.post(route('staged-bids.sam-browser-start'), { date: loadDate });
+            const session_id = start.session_id;
+            const defaultDelay = start.inter_page_delay_ms ?? 400;
+
+            while (true) {
+                const { data } = await axios.post(route('staged-bids.sam-browser-fetch'), { session_id });
+                const totalPart =
+                    data.totalRecords != null && data.totalRecords !== undefined
+                        ? ` of ${data.totalRecords} total`
+                        : '';
+                setBrowserSamProgress(`SAM.gov (via app): ${data.loadedCount ?? 0} opportunities${totalPart}…`);
+                if (data.done) break;
+                await new Promise((r) => setTimeout(r, data.inter_page_delay_ms ?? defaultDelay));
+            }
+
+            setBrowserSamProgress('Queueing staging import…');
+            router.post(route('staged-bids.sam-browser-finish'), { session_id }, {
+                preserveState: false,
+                onFinish: () => {
+                    setBrowserSamLoading(false);
+                    setBrowserSamProgress('');
+                },
+                onError: () => {
+                    setBrowserSamLoading(false);
+                    setBrowserSamProgress('');
+                },
+            });
+        } catch (e) {
+            const msg =
+                e.response?.data?.message ||
+                (e.response?.data?.errors && Object.values(e.response.data.errors).flat().join(' ')) ||
+                e.message;
+            setBrowserSamError(msg);
+            setBrowserSamLoading(false);
+            setBrowserSamProgress('');
+        }
+    }
+
     const isPendingView = !filters.review_status || filters.review_status === 'pending';
 
     return (
@@ -242,7 +290,8 @@ export default function StagedBidsIndex({ stagedBids, categories, counts, filter
                             <div>
                                 <h3 className="text-sm font-semibold text-indigo-900">Load Bids from SAM.gov</h3>
                                 <p className="mt-0.5 text-xs text-indigo-700">
-                                    Load opportunities into staging for review, or download raw SAM.gov search API JSON for the selected date (no database writes).
+                                    Load via the server job, use <strong>Load (browser-paced)</strong> so your session drives paged requests
+                                    (API key stays on the server; requests use browser-like headers and pauses to reduce rate limits), or download raw JSON for inspection.
                                 </p>
                             </div>
                             <div className="flex-1" />
@@ -257,7 +306,7 @@ export default function StagedBidsIndex({ stagedBids, categories, counts, filter
                             </div>
                             <button
                                 type="submit"
-                                disabled={loadingFeed || !loadDate}
+                                disabled={loadingFeed || browserSamLoading || !loadDate}
                                 className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {loadingFeed ? (
@@ -289,7 +338,35 @@ export default function StagedBidsIndex({ stagedBids, categories, counts, filter
                             >
                                 Download JSON
                             </a>
+                            <button
+                                type="button"
+                                onClick={handleBrowserPacedLoad}
+                                disabled={loadingFeed || browserSamLoading || !loadDate}
+                                className="inline-flex items-center gap-2 rounded-md border border-violet-600 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-900 shadow-sm hover:bg-violet-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {browserSamLoading ? (
+                                    <>
+                                        <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                        </svg>
+                                        Fetching…
+                                    </>
+                                ) : (
+                                    'Load (browser-paced)'
+                                )}
+                            </button>
                         </form>
+                        {(browserSamProgress || browserSamError) && (
+                            <div className="mt-3 space-y-1">
+                                {browserSamProgress && (
+                                    <p className="text-xs font-medium text-indigo-900">{browserSamProgress}</p>
+                                )}
+                                {browserSamError && (
+                                    <p className="text-xs font-medium text-red-700">{browserSamError}</p>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     {/* Status counts */}

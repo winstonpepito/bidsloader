@@ -109,14 +109,50 @@ class SamApiClient
     }
 
     /**
+     * One page of SAM.gov search for a calendar day (same query the UI / loader use).
+     */
+    public function fetchSearchPageForDate(Carbon $date, int $offset): array
+    {
+        $dateStr = $date->format('m/d/Y');
+
+        return $this->fetchPage([
+            'postedFrom' => $dateStr,
+            'postedTo' => $dateStr,
+        ], $offset);
+    }
+
+    /**
+     * Headers similar to a browser on sam.gov (API key still sent server-side only).
+     *
+     * @return array<string, string>
+     */
+    private function browserLikeHeaders(): array
+    {
+        return [
+            'Accept' => 'application/json, text/plain, */*',
+            'Accept-Language' => 'en-US,en;q=0.9',
+            'Referer' => 'https://sam.gov/',
+            'Origin' => 'https://sam.gov',
+            'Sec-Fetch-Dest' => 'empty',
+            'Sec-Fetch-Mode' => 'cors',
+            'Sec-Fetch-Site' => 'cross-site',
+            'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        ];
+    }
+
+    /**
      * @return list<array> Decoded JSON per HTTP response (one per page).
      */
     private function collectPages(array $params): array
     {
         $pages = [];
         $offset = 0;
+        $interMs = (int) config('fbo.sam_inter_page_delay_ms', 0);
 
         do {
+            if ($offset > 0 && $interMs > 0) {
+                usleep($interMs * 1000);
+            }
             $response = $this->fetchPage($params, $offset);
             $pages[] = $response;
             $totalRecords = (int) ($response['totalRecords'] ?? 0);
@@ -143,10 +179,7 @@ class SamApiClient
             try {
                 $response = Http::timeout($this->requestTimeout)
                     ->connectTimeout($this->connectTimeout)
-                    ->withHeaders([
-                        'Accept' => 'application/json',
-                        'User-Agent' => config('app.name', 'Laravel').'/1.0 (SAM.gov client)',
-                    ])
+                    ->withHeaders($this->browserLikeHeaders())
                     ->get($this->baseUrl, $queryParams);
 
                 if ($response->status() === 429) {
